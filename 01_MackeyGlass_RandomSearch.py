@@ -10,6 +10,8 @@ import numpy as np
 import math
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
+from sklearn.metrics import mean_absolute_percentage_error
+from permetrics.regression import RegressionMetric
 import statistics as st
 import matplotlib.pyplot as plt
 
@@ -64,21 +66,21 @@ sample_n = 6000;	# total no. of samples, excluding the given initial condition
 # MG = mackey_glass(N, a = a, b = b, c = c, d = d, e = e, initial = initial)
 MG = MackeyGlass(a = a, b = b, tau = tau, x0 = x0, sample_n = sample_n)
 
-def Create_Leg(data, ncols, leg, leg_output = None):
-    X = np.array(data[leg*(ncols-1):].reshape(-1,1))
+def Create_lag(data, ncols, lag, lag_output = None):
+    X = np.array(data[lag*(ncols-1):].reshape(-1,1))
     for i in range(ncols-2,-1,-1):
-        X = np.append(X, data[leg*i:leg*i+X.shape[0]].reshape(-1,1), axis = 1)
+        X = np.append(X, data[lag*i:lag*i+X.shape[0]].reshape(-1,1), axis = 1)
     X_new = np.array(X[:,-1].reshape(-1,1))
     for col in range(ncols-2,-1,-1):
         X_new = np.append(X_new, X[:,col].reshape(-1,1), axis=1)
-    if leg_output == None:
+    if lag_output == None:
         return X_new
     else:
-        y = np.array(data[leg*(ncols-1)+leg_output:].reshape(-1,1))
+        y = np.array(data[lag*(ncols-1)+lag_output:].reshape(-1,1))
         return X_new[:y.shape[0],:], y
 
 # Defining the atributes and the target value
-X, y = Create_Leg(MG, ncols = 4, leg = 6, leg_output = 85)
+X, y = Create_lag(MG, ncols = 4, lag = 6, lag_output = 85)
 
 # Spliting the data into train and test
 X_train, X_test = X[201:3201,:], X[5001:5501,:]
@@ -123,7 +125,7 @@ ModelName = "TCN"
 
 # Define the function to create models for the optimization method
 def build_model(kernel_size = 1, dilations = [1], n_tcn_hidden = 1, neurons = 30, dropout_rate = 0, n_dense_hidden = 1, learning_rate=3e-3):
-    
+    print(kernel_size, dilations, n_tcn_hidden, neurons, dropout_rate, n_dense_hidden, learning_rate)
     i = Input(batch_shape=X_train.shape)
     if n_tcn_hidden == 1:
         o = TCN(kernel_size = kernel_size, dilations = dilations, return_sequences=False)(i)
@@ -151,7 +153,7 @@ keras_reg = KerasRegressor(model=build_model, kernel_size=1, dilations = [1], n_
 # Random search options
 param_distribs = {
     "kernel_size": [1,2,3,4,5],
-    "dilations": [[1],[1,2],[1,2,4],[1,2,4,8],[1,2,4,8,16]],
+    "dilations": [[1,2],[1,2,4],[1,2,4,8],[1,2,4,8,16]],
     "n_tcn_hidden": [1,2,3,4,5],
     "neurons": np.arange(1,100),
     "dropout_rate": [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
@@ -217,12 +219,22 @@ y_pred = model.predict(X_test)
 # Compute the Root Mean Square Error
 RMSE = math.sqrt(mean_squared_error(y_test, y_pred))
 print("RMSE:", RMSE)
+# Compute the Normalized Root Mean Square Error
+NRMSE = RegressionMetric(y_test, y_pred).normalized_root_mean_square_error()
+print("NRMSE:", NRMSE)
 # Compute the Non-Dimensional Error Index
 NDEI= RMSE/st.stdev(y_test.flatten())
 print("NDEI:", NDEI)
 # Compute the Mean Absolute Error
 MAE = mean_absolute_error(y_test, y_pred)
 print("MAE:", MAE)
+# Compute the Mean Absolute Percentage Error
+MAPE = mean_absolute_percentage_error(y_test, y_pred)
+print("MAPE:", MAPE)
+
+# Results
+TCN = f'{Model} & {NRMSE:.5f} & {NDEI:.5f} & {MAPE*100:.2f} & -'
+print(f"\n{TCN}")
 
 # Plot the graphic
 plt.figure(figsize=(19.20,10.80))
@@ -238,10 +250,6 @@ plt.show()
 
 # Print the summary of the model
 print(model.summary())
-
-# Results for the paper
-TCN = f'{ModelName} & {RMSE:.5f} & {NDEI:.5f} & {MAE:.5f} & -'
-print(f"\n{TCN}")
 
 # Plot the model architeture
 # You must install pydot (`pip install pydot`) and install graphviz (https://graphviz.gitlab.io/download/).
